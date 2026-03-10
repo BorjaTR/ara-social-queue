@@ -33,9 +33,9 @@ async function main() {
     process.exit(1);
   }
 
-  if (!INSTAGRAM_ACCOUNT_ID || !PAGE_ACCESS_TOKEN || !IMGBB_API_KEY) {
+  if (!INSTAGRAM_ACCOUNT_ID || !PAGE_ACCESS_TOKEN) {
     console.error(
-      "Missing required environment variables: INSTAGRAM_ACCOUNT_ID, PAGE_ACCESS_TOKEN, IMGBB_API_KEY"
+      "Missing required environment variables: INSTAGRAM_ACCOUNT_ID, PAGE_ACCESS_TOKEN"
     );
     process.exit(1);
   }
@@ -66,59 +66,86 @@ async function main() {
     `Publishing carousel: ${path.basename(absPath)} (${pngFiles.length} images)`
   );
 
-  // Step 1: Upload each image to imgBB and get public URLs
-  const imageUrls = [];
-  for (const pngFile of pngFiles) {
-    const filePath = path.join(absPath, pngFile);
-    const base64 = fs.readFileSync(filePath, "base64");
+  // Step 1: Get public URLs for each image
+  // If meta.json has pre-uploaded imgbb URLs, use those. Otherwise upload now.
+  let imageUrls = [];
 
-    console.log(`  Uploading ${pngFile} to imgBB...`);
-    const formData = new URLSearchParams();
-    formData.append("key", IMGBB_API_KEY);
-    formData.append("image", base64);
-    formData.append("name", path.parse(pngFile).name);
+  if (meta.image_urls && Array.isArray(meta.image_urls) && meta.image_urls.length === pngFiles.length) {
+    console.log(`  Using ${meta.image_urls.length} pre-uploaded imgBB URLs from meta.json`);
+    imageUrls = meta.image_urls;
+  } else {
+    console.log("  No pre-uploaded URLs found — uploading to imgBB...");
+    for (const pngFile of pngFiles) {
+      const filePath = path.join(absPath, pngFile);
+      const base64 = fs.readFileSync(filePath, "base64");
 
-    const uploadRes = await fetch("https://api.imgbb.com/1/upload", {
-      method: "POST",
-      body: formData,
-    });
+      console.log(`  Uploading ${pngFile} to imgBB...`);
+      const formData = new URLSearchParams();
+      formData.append("key", IMGBB_API_KEY);
+      formData.append("image", base64);
+      formData.append("name", path.parse(pngFile).name);
 
-    if (!uploadRes.ok) {
-      const text = await uploadRes.text();
-      console.error(`  imgBB upload failed for ${pngFile}: ${text}`);
-      process.exit(1);
+      const uploadRes = await fetch("https://api.imgbb.com/1/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!uploadRes.ok) {
+        const text = await uploadRes.text();
+        console.error(`  imgBB upload failed for ${pngFile}: ${text}`);
+        process.exit(1);
+      }
+
+      const uploadData = await uploadRes.json();
+      const url = uploadData.data.url;
+      console.log(`  Uploaded: ${url}`);
+      imageUrls.push(url);
     }
-
-    const uploadData = await uploadRes.json();
-    const url = uploadData.data.url;
-    console.log(`  Uploaded: ${url}`);
-    imageUrls.push(url);
   }
 
-  // Step 2: Create individual media containers for each image
+  // Step 2: Create individual media containers for each image (with retry)
   const containerIds = [];
   for (let i = 0; i < imageUrls.length; i++) {
-    console.log(`  Creating container ${i + 1}/${imageUrls.length}...`);
-    const params = new URLSearchParams({
-      image_url: imageUrls[i],
-      is_carousel_item: "true",
-      access_token: PAGE_ACCESS_TOKEN,
-    });
+    let created = false;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      console.log(`  Creating container ${i + 1}/${imageUrls.length}${attempt > 1 ? ` (attempt ${attempt})` : ""}...`);
+      const params = new URLSearchParams({
+        image_url: imageUrls[i],
+        is_carousel_item: "true",
+        access_token: PAGE_ACCESS_TOKEN,
+      });
 
-    const res = await fetch(
-      `${GRAPH_API}/${INSTAGRAM_ACCOUNT_ID}/media?${params}`,
-      { method: "POST" }
-    );
+      const res = await fetch(
+        `${GRAPH_API}/${INSTAGRAM_ACCOUNT_ID}/media?${params}`,
+        { method: "POST" }
+      );
 
-    if (!res.ok) {
-      const text = await res.text();
-      console.error(`  Failed to create container: ${text}`);
+      if (!res.ok) {
+        const text = await res.text();
+        if (attempt < 3 && (text.includes("Timeout") || text.includes("transient"))) {
+          console.log(`  Timeout — retrying in 10s...`);
+          await new Promise((r) => setTimeout(r, 10000));
+          continue;
+        }
+        console.error(`  Failed to create container: ${text}`);
+        process.exit(1);
+      }
+
+      const data = await res.json();
+      containerIds.push(data.id);
+      console.log(`  Container created: ${data.id}`);
+      created = true;
+      break;
+    }
+    if (!created) {
+      console.error(`  Failed to create container after 3 attempts`);
       process.exit(1);
     }
 
-    const data = await res.json();
-    containerIds.push(data.id);
-    console.log(`  Container created: ${data.id}`);
+    // Small delay between containers to avoid rate limits
+    if (i < imageUrls.length - 1) {
+      await new Promise((r) => setTimeout(r, 2000));
+    }
   }
 
   // Step 3: Create the carousel container
