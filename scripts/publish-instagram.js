@@ -153,10 +153,9 @@ async function main() {
   const carouselParams = new URLSearchParams({
     media_type: "CAROUSEL",
     caption: caption,
+    children: containerIds.join(","),
     access_token: PAGE_ACCESS_TOKEN,
   });
-  // Append each child container
-  containerIds.forEach((id) => carouselParams.append("children", id));
 
   const carouselRes = await fetch(
     `${GRAPH_API}/${INSTAGRAM_ACCOUNT_ID}/media?${carouselParams}`,
