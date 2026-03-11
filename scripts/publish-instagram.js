@@ -10,11 +10,13 @@
  * Expects environment variables:
  *   INSTAGRAM_ACCOUNT_ID  — Instagram Business Account ID
  *   PAGE_ACCESS_TOKEN     — Facebook Page Access Token with instagram_basic, instagram_content_publish
- *   IMGBB_API_KEY         — imgBB API key for hosting images
+ *   GITHUB_REPO           — GitHub repo in "owner/repo" format (e.g., "BorjaTR/ara-social-queue")
  *
  * The folder must contain:
  *   meta.json  — with at least { "caption": "..." }
  *   *.png      — carousel images, sorted alphabetically (01.png, 02.png, ...)
+ *
+ * Images are served directly from the public GitHub repo via raw.githubusercontent.com.
  */
 
 const fs = require("fs");
@@ -22,7 +24,7 @@ const path = require("path");
 
 const INSTAGRAM_ACCOUNT_ID = process.env.INSTAGRAM_ACCOUNT_ID;
 const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
-const IMGBB_API_KEY = process.env.IMGBB_API_KEY;
+const GITHUB_REPO = process.env.GITHUB_REPO || "BorjaTR/ara-social-queue";
 
 const GRAPH_API = "https://graph.facebook.com/v21.0";
 
@@ -66,49 +68,28 @@ async function main() {
     `Publishing carousel: ${path.basename(absPath)} (${pngFiles.length} images)`
   );
 
-  // Step 1: Get public URLs for each image
-  // If meta.json has pre-uploaded imgbb URLs, use those. Otherwise upload now.
-  let imageUrls = [];
+  // Step 1: Build public URLs from GitHub raw content
+  const folderName = path.basename(absPath);
+  // Determine if folder is in queue/ or posted/ relative to repo root
+  const repoRelPath = `queue/${folderName}`;
+  const imageUrls = pngFiles.map(
+    (png) =>
+      `https://raw.githubusercontent.com/${GITHUB_REPO}/main/${repoRelPath}/${png}`
+  );
 
-  if (meta.image_urls && Array.isArray(meta.image_urls) && meta.image_urls.length === pngFiles.length) {
-    console.log(`  Using ${meta.image_urls.length} pre-uploaded imgBB URLs from meta.json`);
-    imageUrls = meta.image_urls;
-  } else {
-    console.log("  No pre-uploaded URLs found — uploading to imgBB...");
-    for (const pngFile of pngFiles) {
-      const filePath = path.join(absPath, pngFile);
-      const base64 = fs.readFileSync(filePath, "base64");
-
-      console.log(`  Uploading ${pngFile} to imgBB...`);
-      const formData = new URLSearchParams();
-      formData.append("key", IMGBB_API_KEY);
-      formData.append("image", base64);
-      formData.append("name", path.parse(pngFile).name);
-
-      const uploadRes = await fetch("https://api.imgbb.com/1/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!uploadRes.ok) {
-        const text = await uploadRes.text();
-        console.error(`  imgBB upload failed for ${pngFile}: ${text}`);
-        process.exit(1);
-      }
-
-      const uploadData = await uploadRes.json();
-      const url = uploadData.data.url;
-      console.log(`  Uploaded: ${url}`);
-      imageUrls.push(url);
-    }
-  }
+  console.log(`  Using ${imageUrls.length} GitHub raw URLs`);
+  imageUrls.forEach((url) => console.log(`    ${url}`));
 
   // Step 2: Create individual media containers for each image (with retry)
   const containerIds = [];
   for (let i = 0; i < imageUrls.length; i++) {
     let created = false;
     for (let attempt = 1; attempt <= 3; attempt++) {
-      console.log(`  Creating container ${i + 1}/${imageUrls.length}${attempt > 1 ? ` (attempt ${attempt})` : ""}...`);
+      console.log(
+        `  Creating container ${i + 1}/${imageUrls.length}${
+          attempt > 1 ? ` (attempt ${attempt})` : ""
+        }...`
+      );
       const params = new URLSearchParams({
         image_url: imageUrls[i],
         is_carousel_item: "true",
@@ -122,7 +103,10 @@ async function main() {
 
       if (!res.ok) {
         const text = await res.text();
-        if (attempt < 3 && (text.includes("Timeout") || text.includes("transient"))) {
+        if (
+          attempt < 3 &&
+          (text.includes("Timeout") || text.includes("transient"))
+        ) {
           console.log(`  Timeout — retrying in 10s...`);
           await new Promise((r) => setTimeout(r, 10000));
           continue;
