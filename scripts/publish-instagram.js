@@ -80,6 +80,28 @@ async function main() {
   console.log(`  Using ${imageUrls.length} GitHub raw URLs`);
   imageUrls.forEach((url) => console.log(`    ${url}`));
 
+  // Step 1b: Verify all image URLs are accessible before sending to Instagram
+  console.log("  Verifying image URLs are accessible...");
+  for (const url of imageUrls) {
+    let accessible = false;
+    for (let attempt = 1; attempt <= 10; attempt++) {
+      const res = await fetch(url, { method: "HEAD" });
+      if (res.ok) {
+        accessible = true;
+        break;
+      }
+      console.log(
+        `  ${path.basename(url)} not ready (HTTP ${res.status}), retrying in 5s... (${attempt}/10)`
+      );
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+    if (!accessible) {
+      console.error(`  Image not accessible after 10 attempts: ${url}`);
+      process.exit(1);
+    }
+  }
+  console.log("  All images accessible.");
+
   // Step 2: Create individual media containers for each image (with retry)
   const containerIds = [];
   for (let i = 0; i < imageUrls.length; i++) {
@@ -103,11 +125,9 @@ async function main() {
 
       if (!res.ok) {
         const text = await res.text();
-        if (
-          attempt < 3 &&
-          (text.includes("Timeout") || text.includes("transient"))
-        ) {
-          console.log(`  Timeout — retrying in 10s...`);
+        if (attempt < 3) {
+          console.log(`  Container creation failed — retrying in 10s...`);
+          console.log(`  Error: ${text}`);
           await new Promise((r) => setTimeout(r, 10000));
           continue;
         }
