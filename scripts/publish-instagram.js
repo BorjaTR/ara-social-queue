@@ -10,13 +10,13 @@
  * Expects environment variables:
  *   INSTAGRAM_ACCOUNT_ID  — Instagram Business Account ID
  *   PAGE_ACCESS_TOKEN     — Facebook Page Access Token with instagram_basic, instagram_content_publish
- *   GITHUB_REPO           — GitHub repo in "owner/repo" format (e.g., "BorjaTR/ara-social-queue")
+ *   GITHUB_PAGES_BASE     — GitHub Pages base URL (e.g., "https://borjatr.github.io/ara-social-queue")
  *
  * The folder must contain:
  *   meta.json  — with at least { "caption": "..." }
  *   *.png      — carousel images, sorted alphabetically (01.png, 02.png, ...)
  *
- * Images are served directly from the public GitHub repo via raw.githubusercontent.com.
+ * Images are served via GitHub Pages with proper Content-Type headers.
  */
 
 const fs = require("fs");
@@ -24,7 +24,8 @@ const path = require("path");
 
 const INSTAGRAM_ACCOUNT_ID = process.env.INSTAGRAM_ACCOUNT_ID;
 const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
-const GITHUB_REPO = process.env.GITHUB_REPO || "BorjaTR/ara-social-queue";
+const GITHUB_PAGES_BASE =
+  process.env.GITHUB_PAGES_BASE || "https://borjatr.github.io/ara-social-queue";
 
 const GRAPH_API = "https://graph.facebook.com/v21.0";
 
@@ -68,16 +69,14 @@ async function main() {
     `Publishing carousel: ${path.basename(absPath)} (${pngFiles.length} images)`
   );
 
-  // Step 1: Build public URLs from GitHub raw content
+  // Step 1: Build public URLs from GitHub Pages
   const folderName = path.basename(absPath);
-  // Determine if folder is in queue/ or posted/ relative to repo root
   const repoRelPath = `queue/${folderName}`;
   const imageUrls = pngFiles.map(
-    (png) =>
-      `https://raw.githubusercontent.com/${GITHUB_REPO}/main/${repoRelPath}/${png}`
+    (png) => `${GITHUB_PAGES_BASE}/${repoRelPath}/${png}`
   );
 
-  console.log(`  Using ${imageUrls.length} GitHub raw URLs`);
+  console.log(`  Using ${imageUrls.length} GitHub Pages URLs`);
   imageUrls.forEach((url) => console.log(`    ${url}`));
 
   // Step 1b: Verify all image URLs are accessible before sending to Instagram
