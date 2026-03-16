@@ -108,6 +108,9 @@ function main() {
 
       // Move folder from queue/ to posted/
       const destPath = path.join(POSTED_DIR, folder.name);
+      if (fs.existsSync(destPath)) {
+        fs.rmSync(destPath, { recursive: true });
+      }
       fs.renameSync(folderPath, destPath);
       console.log(`  Moved to posted/${folder.name}`);
 
