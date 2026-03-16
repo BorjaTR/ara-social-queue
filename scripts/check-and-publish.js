@@ -83,7 +83,7 @@ function main() {
     const scheduledTime = new Date(meta.scheduled);
     if (isNaN(scheduledTime.getTime())) {
       console.log(
-        `Skipping ${folder.name}: invalid scheduled date "${meta.scheduled}"`
+        `⚠ Skipping ${folder.name}: invalid scheduled date "${meta.scheduled}"`
       );
       continue;
     }
@@ -123,61 +123,20 @@ function main() {
   if (publishedCount > 0) {
     console.log(`\n${publishedCount} carousel(s) published. Committing...`);
 
-    const repoRoot = path.resolve(__dirname, "..");
-    const execOpts = { stdio: "inherit", cwd: repoRoot };
-
     try {
-      // Detect the default branch name so we can push even from detached HEAD
-      let branch;
-      try {
-        branch = execSync("git symbolic-ref --short HEAD", {
-          cwd: repoRoot,
-          encoding: "utf-8",
-        }).trim();
-      } catch {
-        // Detached HEAD (common in GitHub Actions schedule triggers)
-        // Determine the default branch and create a local tracking branch
-        const remote = execSync(
-          "git remote show origin | grep 'HEAD branch' | awk '{print $NF}'",
-          { cwd: repoRoot, encoding: "utf-8" }
-        ).trim();
-        branch = remote || "main";
-        console.log(
-          `  Detached HEAD detected. Checking out ${branch} before committing...`
-        );
-        execSync(`git checkout ${branch}`, execOpts);
-      }
-
-      execSync("git add .", execOpts);
+      execSync("git add .", { stdio: "inherit", cwd: path.resolve(__dirname, "..") });
       const message =
         publishedCount === 1
           ? `Published 1 carousel [skip ci]`
           : `Published ${publishedCount} carousels [skip ci]`;
-      execSync(`git commit -m "${message}"`, execOpts);
-
-      // Push with retry (exponential backoff: 2s, 4s, 8s, 16s)
-      let pushed = false;
-      for (let attempt = 0; attempt < 5; attempt++) {
-        try {
-          execSync(`git push origin ${branch}`, execOpts);
-          pushed = true;
-          break;
-        } catch (pushErr) {
-          if (attempt < 4) {
-            const delay = Math.pow(2, attempt + 1);
-            console.log(
-              `  Push failed (attempt ${attempt + 1}/5). Retrying in ${delay}s...`
-            );
-            execSync(`sleep ${delay}`);
-          }
-        }
-      }
-
-      if (!pushed) {
-        console.error("  All push attempts failed.");
-        process.exit(1);
-      }
-
+      execSync(`git commit -m "${message}"`, {
+        stdio: "inherit",
+        cwd: path.resolve(__dirname, ".."),
+      });
+      execSync("git push", {
+        stdio: "inherit",
+        cwd: path.resolve(__dirname, ".."),
+      });
       console.log("Changes committed and pushed.");
     } catch (err) {
       console.error(`Git commit/push failed: ${err.message}`);
