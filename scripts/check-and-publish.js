@@ -67,8 +67,8 @@ function main() {
       continue;
     }
 
-    // Skip if not approved
-    if (meta.status !== "approved") {
+    // Skip if not approved/ready
+    if (meta.status !== "approved" && meta.status !== "ready") {
       console.log(`Skipping ${folder.name}: status is "${meta.status}"`);
       continue;
     }
