@@ -1,11 +1,13 @@
 {
   "platform": "instagram",
-  "status": "approved",
+  "status": "published",
   "scheduled": "2026-03-25T11:00:00Z",
   "caption": "By the fourth time you read that text, you're not reading what they wrote anymore. You're reading what you're afraid they meant. The Literal Read separates their words from your story. We're building a guided journal for overthinkers — DM \"JOURNAL\" for a free sample. Save this.\n\n#overthinking #anxiety #texting #mentalhealth #arajournals",
   "topic": "overanalyzing texts",
   "pillar": 1,
   "hook": "you reread the text 4 times — different meaning each time",
   "exercise": "The Literal Read",
-  "week": "2026-W13"
+  "week": "2026-W13",
+  "published_at": "2026-03-25T10:54:12.441Z",
+  "instagram_post_id": "17905392702385837"
 }
